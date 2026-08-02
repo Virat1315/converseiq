@@ -2,8 +2,8 @@
 
 import { useRef, useState } from 'react';
 import { Loader2, Plus, Trash2, Upload, X } from 'lucide-react';
-import { callStore } from '@/lib/call-store';
-import { buildAgentInstructions, type CampaignCriteria } from '@/lib/screening';
+import { dispatchScreeningCall } from '@/lib/dispatch-call';
+import { type CampaignCriteria } from '@/lib/screening';
 import { DEFAULT_MODEL, DEFAULT_VOICE, MODELS, VOICES } from '@/lib/agent-options';
 import { formatPhone, normalizePhone } from '@/lib/phone';
 import { parseCandidateFile, type ImportRow } from '@/lib/import-candidates';
@@ -95,50 +95,17 @@ export default function CandidatesPanel({
     // the campaign runs instead of all at once at the end.
     let done = 0;
     for (const candidate of queue) {
-      // Imported rows with no name column fall back to the phone number. Pass
-      // undefined rather than let the agent read a phone number out loud.
-      const spokenName = candidate.name === candidate.phone ? undefined : candidate.name;
-      const screeningInstructions = buildAgentInstructions(criteria, spokenName);
-
-      const record = callStore.add({
+      const outcome = await dispatchScreeningCall({
         name: candidate.name,
         phone: candidate.phone,
-        prompt: screeningInstructions,
-        status: 'pending',
+        criteria,
         voiceId,
         modelProvider,
       });
 
-      try {
-        const res = await fetch('/api/dispatch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: candidate.phone,
-            callId: record.id,
-            candidateName: spokenName,
-            screeningInstructions,
-            voiceId,
-            modelProvider,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `Dispatch failed (${res.status})`);
-
-        callStore.update(record.id, {
-          status: 'connecting',
-          roomName: data.roomName,
-          dispatchId: data.dispatchId,
-        });
-      } catch (e) {
-        const message = e instanceof Error ? e.message : 'Dispatch failed';
-        callStore.update(record.id, { status: 'failed', error: message });
-        // A configuration error will fail identically for everyone left —
-        // stop rather than generating forty copies of the same message.
-        if (message.includes('Missing environment variable')) {
-          setError(message);
-          break;
-        }
+      if (outcome.fatal) {
+        setError(outcome.error!);
+        break;
       }
 
       done += 1;

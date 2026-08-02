@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Download, PhoneOff, Trash2 } from 'lucide-react';
+import { ChevronDown, Download, PhoneOff, RotateCw, Trash2 } from 'lucide-react';
 import { callStore, downloadCsv, toCsv, type CallRecord, type CallStatus } from '@/lib/call-store';
+import { dispatchScreeningCall } from '@/lib/dispatch-call';
+import { DEFAULT_MODEL, DEFAULT_VOICE } from '@/lib/agent-options';
 import {
   QUESTIONS,
   VERDICT_LABEL,
@@ -18,6 +20,8 @@ const POLL_MS = 3000;
 export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria }) {
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [redialing, setRedialing] = useState<string | null>(null);
+  const [redialError, setRedialError] = useState('');
 
   useEffect(() => {
     const sync = () => setCalls(callStore.list());
@@ -103,6 +107,8 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
       'verdict',
       'status',
       ...QUESTIONS.filter((q) => criteria.questions.includes(q.id)).map((q) => q.label),
+      'skills_matched',
+      'skills_missing',
       'notes',
       'duration_seconds',
       'called_at',
@@ -119,6 +125,7 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
         const a = r.answers;
         if (!a) return '';
         if (id === 'experience') return a.yearsExperience ?? '';
+        if (id === 'skills') return (a.topSkills ?? []).join('; ');
         if (id === 'salary') return a.expectedSalaryLpa ?? '';
         if (id === 'relocation')
           return a.openToRelocation === null || a.openToRelocation === undefined
@@ -128,6 +135,9 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
               : 'No';
         return a.noticePeriodDays ?? '';
       }),
+      // Which of the role's wanted skills the candidate actually claimed.
+      r.score.dimensions.find((d) => d.id === 'skills')?.skills?.matched.join('; ') ?? '',
+      r.score.dimensions.find((d) => d.id === 'skills')?.skills?.missing.join('; ') ?? '',
       r.answers?.notes ?? '',
       r.duration ?? '',
       r.timestamp,
@@ -138,6 +148,26 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
         .slice(0, 10)}.csv`,
       toCsv(header, rows)
     );
+  };
+
+  /**
+   * Redial a candidate. Adds a fresh record rather than overwriting the old
+   * one — a second attempt is a separate call, and the first one's outcome is
+   * often why you are calling again.
+   */
+  const callAgain = async (call: CallRecord) => {
+    setRedialError('');
+    setRedialing(call.id);
+    const outcome = await dispatchScreeningCall({
+      name: call.name || call.phone,
+      phone: call.phone,
+      criteria,
+      voiceId: call.voiceId || DEFAULT_VOICE,
+      modelProvider: call.modelProvider || DEFAULT_MODEL,
+    });
+    setRedialing(null);
+    if (!outcome.ok) setRedialError(outcome.error || 'Could not place the call');
+    else setExpanded(outcome.record.id);
   };
 
   const hangup = async (call: CallRecord) => {
@@ -187,6 +217,12 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
         </div>
       </div>
 
+      {redialError && (
+        <div className="p-3 rounded-lg border bg-red-500/10 border-red-500/30 text-red-200 text-sm">
+          {redialError}
+        </div>
+      )}
+
       <Card className="divide-y divide-white/5 overflow-hidden">
         {ranked.map((r) => {
           const live = r.status === 'connecting' || r.status === 'ringing' || r.status === 'connected';
@@ -227,13 +263,22 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
                   )}
                 </div>
 
-                {live && r.roomName && (
+                {live && r.roomName ? (
                   <button
                     onClick={() => hangup(r)}
                     title="End call"
                     className="p-1.5 rounded-md text-red-400/70 hover:text-red-300 hover:bg-red-500/10 transition shrink-0"
                   >
                     <PhoneOff size={14} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => callAgain(r)}
+                    disabled={redialing === r.id}
+                    title={`Call ${r.name || r.phone} again`}
+                    className="p-1.5 rounded-md text-neutral-500 hover:text-white hover:bg-white/10 transition shrink-0 disabled:opacity-40"
+                  >
+                    <RotateCw size={14} className={redialing === r.id ? 'animate-spin' : ''} />
                   </button>
                 )}
 
@@ -251,18 +296,40 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
                     <>
                       <div className="space-y-1.5">
                         {r.score.dimensions.map((d) => (
-                          <div key={d.id} className="flex items-center gap-3 text-xs">
-                            <span className="w-28 text-neutral-500 shrink-0">{d.label}</span>
-                            <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-white/60 rounded-full transition-all"
-                                style={{ width: `${(d.ratio ?? 0) * 100}%` }}
-                              />
+                          <div key={d.id} className="space-y-1.5">
+                            <div className="flex items-center gap-3 text-xs">
+                              <span className="w-28 text-neutral-500 shrink-0">{d.label}</span>
+                              <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-white/60 rounded-full transition-all"
+                                  style={{ width: `${(d.ratio ?? 0) * 100}%` }}
+                                />
+                              </div>
+                              <span className="w-40 text-neutral-400 text-right shrink-0">{d.detail}</span>
+                              <span className="w-12 text-neutral-500 text-right tabular-nums shrink-0">
+                                {d.points}/{d.max}
+                              </span>
                             </div>
-                            <span className="w-40 text-neutral-400 text-right shrink-0">{d.detail}</span>
-                            <span className="w-12 text-neutral-500 text-right tabular-nums shrink-0">
-                              {d.points}/{d.max}
-                            </span>
+
+                            {d.skills && (
+                              <div className="flex flex-wrap gap-1 pl-28 ml-3">
+                                {d.skills.matched.map((s) => (
+                                  <Chip key={`m-${s}`} tone="match">
+                                    {s}
+                                  </Chip>
+                                ))}
+                                {d.skills.missing.map((s) => (
+                                  <Chip key={`x-${s}`} tone="missing">
+                                    {s}
+                                  </Chip>
+                                ))}
+                                {d.skills.extra.map((s) => (
+                                  <Chip key={`e-${s}`} tone="extra">
+                                    {s}
+                                  </Chip>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -270,6 +337,13 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
                       {r.answers.notes && (
                         <p className="text-xs text-neutral-400 bg-white/[0.03] rounded-lg p-3">
                           {r.answers.notes}
+                        </p>
+                      )}
+
+                      {r.score.noSkillOverlap && (
+                        <p className="text-[11px] text-amber-400/80">
+                          None of their skills matched what the role wants — capped below Strong
+                          match, however well they scored elsewhere.
                         </p>
                       )}
 
@@ -303,6 +377,18 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
         })}
       </Card>
     </div>
+  );
+}
+
+/** Skill chips: wanted-and-claimed, wanted-and-absent, claimed-but-not-wanted. */
+function Chip({ tone, children }: { tone: 'match' | 'missing' | 'extra'; children: React.ReactNode }) {
+  const tones = {
+    match: 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300',
+    missing: 'bg-white/5 border-white/10 text-neutral-600 line-through',
+    extra: 'bg-white/5 border-white/10 text-neutral-400',
+  };
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[10px] border ${tones[tone]}`}>{children}</span>
   );
 }
 

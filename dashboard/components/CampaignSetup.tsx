@@ -111,6 +111,46 @@ export default function CampaignSetup({
           )}
         </Card>
 
+        {criteria.questions.includes('skills') && (
+          <Card className="p-5 space-y-3">
+            <h2 className="text-sm font-semibold text-white">Skills the role wants</h2>
+            <p className="text-xs text-neutral-500">
+              The candidate&rsquo;s answer is matched against these. They are never read out on
+              the call, so nobody can just repeat them back.
+            </p>
+            <input
+              value={criteria.desiredSkills.join(', ')}
+              onChange={(e) =>
+                set(
+                  'desiredSkills',
+                  e.target.value
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                )
+              }
+              placeholder="product sense, user research, SQL"
+              className={inputClass}
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {criteria.desiredSkills.map((s) => (
+                <span
+                  key={s}
+                  className="px-2 py-0.5 rounded text-[11px] bg-white/5 border border-white/10 text-neutral-300"
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
+            {criteria.desiredSkills.length === 0 && (
+              <Notice tone="warn">
+                No skills listed, so everyone scores full marks on that question. Add some, or turn
+                the question off.
+              </Notice>
+            )}
+          </Card>
+        )}
+
         <Card className="p-5 space-y-4">
           <h2 className="text-sm font-semibold text-white">Scoring thresholds</h2>
           <p className="text-xs text-neutral-500">

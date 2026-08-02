@@ -102,13 +102,16 @@ class CallTools(llm.ToolContext):
         description=(
             "Record the candidate's screening answers. Call this exactly once, after the last "
             "question is answered, or immediately if the candidate says they are not interested. "
-            "Leave a field out if the candidate genuinely did not answer that question — never guess."
+            "Leave a field out if the candidate genuinely did not answer that question — never guess. "
+            "top_skills must be the skills the candidate named, in their own words, and notes should "
+            "carry the background they described."
         )
     )
     async def submit_screening(
         self,
         interested: bool,
         years_experience: Optional[float] = None,
+        top_skills: Optional[list[str]] = None,
         expected_salary_lpa: Optional[float] = None,
         open_to_relocation: Optional[bool] = None,
         notice_period_days: Optional[int] = None,
@@ -128,6 +131,9 @@ class CallTools(llm.ToolContext):
         answers = {
             "interested": interested,
             "yearsExperience": years_experience,
+            # Kept verbatim. The dashboard matches these against the role's
+            # desired skills; rewording them here would bias that match.
+            "topSkills": [s.strip() for s in (top_skills or []) if s and s.strip()] or None,
             "expectedSalaryLpa": expected_salary_lpa,
             "openToRelocation": open_to_relocation,
             "noticePeriodDays": notice_period_days,

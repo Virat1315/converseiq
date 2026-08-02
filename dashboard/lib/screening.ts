@@ -14,7 +14,7 @@
 // Questions
 // ---------------------------------------------------------------------------
 
-export type QuestionId = 'experience' | 'salary' | 'relocation' | 'notice';
+export type QuestionId = 'experience' | 'skills' | 'salary' | 'relocation' | 'notice';
 
 export interface ScreeningQuestion {
   id: QuestionId;
@@ -35,6 +35,11 @@ export const QUESTIONS: ScreeningQuestion[] = [
     label: 'Experience',
   },
   {
+    id: 'skills',
+    ask: 'Tell me briefly about your background — and what are the top five skills you would say you are strongest in?',
+    label: 'Skills match',
+  },
+  {
     id: 'salary',
     // Worded to cover both stipends and salaries, since the same campaign shape
     // is used for intern and full-time roles.
@@ -53,7 +58,9 @@ export const QUESTIONS: ScreeningQuestion[] = [
   },
 ];
 
-export const MAX_QUESTIONS = 4;
+// Five is the ceiling. The skills question earns its place because it is the
+// only open one — the rest are a number or a yes/no.
+export const MAX_QUESTIONS = 5;
 
 // ---------------------------------------------------------------------------
 // Campaign
@@ -65,6 +72,11 @@ export interface CampaignCriteria {
   company: string;
   /** Questions to ask, in order. At most MAX_QUESTIONS. */
   questions: QuestionId[];
+  /**
+   * Skills the role actually wants. Candidate answers are matched against these
+   * to score the `skills` question — an empty list makes it unscoreable.
+   */
+  desiredSkills: string[];
   /** Budget ceiling in lakhs per annum. */
   maxBudgetLpa: number;
   /** Whether the role actually requires relocation. */
@@ -77,7 +89,14 @@ export interface CampaignCriteria {
 export const DEFAULT_CRITERIA: CampaignCriteria = {
   role: 'Product Management Intern',
   company: 'XYZ Company',
-  questions: ['experience', 'salary', 'relocation', 'notice'],
+  questions: ['experience', 'skills', 'salary', 'relocation', 'notice'],
+  desiredSkills: [
+    'product sense',
+    'user research',
+    'data analysis',
+    'communication',
+    'SQL',
+  ],
   // Intern-scale defaults: a stipend rather than a salary, and interns are
   // usually available quickly with little prior experience.
   maxBudgetLpa: 6,
@@ -94,20 +113,76 @@ export interface ScreeningAnswers {
   /** False when the candidate declined outright; nothing else is asked. */
   interested: boolean | null;
   yearsExperience: number | null;
+  /** The candidate's own top skills, in their words. */
+  topSkills?: string[] | null;
   expectedSalaryLpa: number | null;
   openToRelocation: boolean | null;
   noticePeriodDays: number | null;
-  /** Anything notable the agent heard. */
+  /** Background the candidate gave, plus anything else notable. */
   notes?: string;
 }
 
 export const EMPTY_ANSWERS: ScreeningAnswers = {
   interested: null,
   yearsExperience: null,
+  topSkills: null,
   expectedSalaryLpa: null,
   openToRelocation: null,
   noticePeriodDays: null,
 };
+
+// ---------------------------------------------------------------------------
+// Skill matching
+// ---------------------------------------------------------------------------
+
+/** Lowercase, strip punctuation, collapse whitespace. */
+function normalizeSkill(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9+#. ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Two skills count as the same if they normalise equal, or if one contains the
+ * other — "analytics" should match "product analytics", and "sql" should match
+ * "writing SQL queries".
+ *
+ * Containment is only allowed from 3 characters up, or short tokens produce
+ * nonsense matches ("go" inside "google docs").
+ */
+function skillsEqual(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length >= 3 && b.includes(a)) return true;
+  if (b.length >= 3 && a.includes(b)) return true;
+  return false;
+}
+
+export interface SkillMatch {
+  matched: string[];
+  missing: string[];
+  /** Candidate skills that weren't asked for — not penalised, just noted. */
+  extra: string[];
+  ratio: number;
+}
+
+/** Which of the role's desired skills the candidate actually claimed. */
+export function matchSkills(claimed: string[], desired: string[]): SkillMatch {
+  const c = claimed.map(normalizeSkill).filter(Boolean);
+  const d = desired.map(normalizeSkill).filter(Boolean);
+
+  const matched = desired.filter((_, i) => c.some((x) => skillsEqual(x, d[i])));
+  const missing = desired.filter((_, i) => !c.some((x) => skillsEqual(x, d[i])));
+  const extra = claimed.filter((_, i) => !d.some((y) => skillsEqual(c[i], y)));
+
+  return {
+    matched,
+    missing,
+    extra,
+    ratio: d.length === 0 ? 0 : matched.length / d.length,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Scoring
@@ -123,6 +198,8 @@ export interface DimensionScore {
   max: number;
   /** Short human explanation, shown in the breakdown. */
   detail: string;
+  /** Only set for the skills dimension, for the matched/missing chips. */
+  skills?: SkillMatch;
 }
 
 export interface CandidateScore {
@@ -134,6 +211,8 @@ export interface CandidateScore {
   /** True once every enabled question has an answer. */
   complete: boolean;
   verdict: 'strong' | 'possible' | 'weak' | 'declined' | 'no-data';
+  /** Matched none of the role's wanted skills — caps the verdict. */
+  noSkillOverlap?: boolean;
 }
 
 /** Linear falloff: full marks at or better than target, zero at `zeroAt`. */
@@ -174,6 +253,9 @@ export function scoreCandidate(
     };
   }
 
+  // Rank ties break toward the more complete screening, so a candidate who
+  // answered everything beats one who answered half and happened to match.
+
   // An explicit "not interested" outranks every other signal.
   if (answers.interested === false) {
     return {
@@ -192,8 +274,23 @@ export function scoreCandidate(
     const label = QUESTIONS.find((q) => q.id === id)!.label;
     let ratio: number | null = null;
     let detail = 'Not answered';
+    let skills: SkillMatch | undefined;
 
-    if (id === 'experience') {
+    if (id === 'skills') {
+      const claimed = answers.topSkills;
+      if (claimed && claimed.length > 0) {
+        skills = matchSkills(claimed, criteria.desiredSkills);
+        if (criteria.desiredSkills.length === 0) {
+          // Nothing to match against — award full marks rather than punish the
+          // candidate for a campaign that never listed what it wants.
+          ratio = 1;
+          detail = `${claimed.length} skills given, none required`;
+        } else {
+          ratio = skills.ratio;
+          detail = `${skills.matched.length} of ${criteria.desiredSkills.length} wanted skills`;
+        }
+      }
+    } else if (id === 'experience') {
       const v = answers.yearsExperience;
       if (v !== null && v !== undefined) {
         // Zero marks at "no experience at all"; full at the required minimum.
@@ -235,6 +332,7 @@ export function scoreCandidate(
       points: ratio === null ? 0 : Math.round(ratio * max * 10) / 10,
       max: Math.round(max * 10) / 10,
       detail,
+      skills,
     });
   }
 
@@ -247,7 +345,19 @@ export function scoreCandidate(
   else if (total >= 45) verdict = 'possible';
   else verdict = 'weak';
 
-  return { total, dimensions, unanswered, complete, verdict };
+  // Skills are one dimension among several, so a candidate with none of the
+  // role's skills can still clear 75 by being cheap, available and willing to
+  // move. That is not a strong match for the job — cap the label so they stay
+  // visible without heading the shortlist.
+  const skillDim = dimensions.find((d) => d.id === 'skills');
+  const noSkillOverlap =
+    skillDim !== undefined &&
+    skillDim.ratio === 0 &&
+    criteria.desiredSkills.length > 0;
+
+  if (noSkillOverlap && verdict === 'strong') verdict = 'possible';
+
+  return { total, dimensions, unanswered, complete, verdict, noSkillOverlap };
 }
 
 /**
@@ -304,6 +414,7 @@ export function buildAgentInstructions(
 
   const numbered = enabled.map((q, i) => `${i + 1}. ${q.ask}`).join('\n');
 
+  const wantsSkills = enabled.some((q) => q.id === 'skills');
   const name = candidateName?.trim();
   const greetBy = name ? `${name} by name` : 'them';
   const thanksExample = name
@@ -326,7 +437,14 @@ ${numbered}
 
 RULES — follow these exactly:
 - Ask ONE question at a time. Wait for the answer before asking the next.
-- Keep every message to one or two short sentences. This is a phone call, not an essay.
+- Keep every message to one or two short sentences. This is a phone call, not an essay.${
+    wantsSkills
+      ? `
+- On the skills question, let them talk. If they name fewer than five skills, ask once for the rest — "and what else would you put in your top five?" — then move on with whatever they gave.
+- Record their skills in THEIR OWN WORDS. Do not translate them into the skills you think we want, and do not add any they did not say.
+- Do NOT tell them which skills the role is looking for, and do NOT hint that an answer was a good or bad match.`
+      : ''
+  }
 - Do NOT answer questions about stipend or salary bands, benefits, interview rounds, the team, or the company. Say "I'm only collecting a few details right now — the recruiter will cover all of that" and move on to your next question.
 - Do NOT invent details about the role, the company, or the process.
 - Do NOT give feedback on their answers, and never tell them their score or whether they qualify.

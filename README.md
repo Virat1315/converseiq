@@ -198,17 +198,24 @@ campaign in three steps.
 
 ### 1. Campaign — what to ask, and how to score it
 
-Pick up to **four** screening questions and set the thresholds they are scored
+Pick up to **five** screening questions and set the thresholds they are scored
 against:
 
 | Question | Scored against |
 |----------|----------------|
 | Years of relevant experience | Minimum required |
-| Expected salary (LPA) | Budget — zero marks at 1.5× |
+| Background + top 5 skills | The skills the role actually wants |
+| Expected pay (LPA) | Budget — zero marks at 1.5× |
 | Open to relocation | Whether the role requires it |
 | Notice period | Longest workable — zero marks at 2× |
 
-Four is a hard cap: screening calls that run longer get hung up on.
+Five is a hard cap: screening calls that run longer get hung up on.
+
+The skills question is the only open one — the candidate names their own top
+five, in their own words, and those are matched against the role's wanted list.
+The wanted list is never read out, so nobody can just repeat it back. Someone
+who matches none of it is capped below *Strong match* however well they score
+elsewhere.
 
 The agent script is generated from these settings and shown beside them. It
 binds the bot to **asking** the questions — it will not answer questions about
@@ -234,7 +241,12 @@ answers always produce identical marks. It also means **changing the criteria
 re-ranks everyone instantly** — raise the budget and the expensive candidate
 moves up, with nobody called again.
 
-Export the ranked table to CSV at any point.
+Each row has a **Call again** button — a redial runs the same campaign script and
+lands as a separate record, so the first attempt's outcome is still there next to
+it.
+
+Export the ranked table to CSV at any point, including which wanted skills each
+candidate matched and which they missed.
 
 The setup banner reads `/api/health` and names any missing environment
 variable, so a misconfigured deployment says what is wrong instead of failing

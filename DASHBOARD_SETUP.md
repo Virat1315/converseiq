@@ -41,6 +41,7 @@ on the internet, see [DEPLOYMENT.md](DEPLOYMENT.md).
 │   │   └── ui.tsx                   # Shared primitives
 │   └── lib/
 │       ├── screening.ts             # Questions, scoring, ranking, agent script
+│       ├── dispatch-call.ts         # Shared dispatch, used by queue and redial
 │       ├── server-utils.ts          # LiveKit clients + dispatch
 │       ├── import-candidates.ts     # .xlsx / .csv reader
 │       ├── phone.ts                 # E.164 normalisation
@@ -121,7 +122,10 @@ what the bot is bound to on every call in the campaign.
 and press *Start screening*. Calls are placed one at a time.
 
 **Results tab** — candidates ranked best-match first. Expand a row for the
-per-question breakdown, or export the table to CSV.
+per-question breakdown, including which wanted skills they matched (green),
+which they missed (struck through) and which extras they volunteered. The
+circular-arrow button redials a candidate with the same campaign script; the
+redial is recorded separately so the earlier attempt stays visible.
 
 Notes:
 
@@ -140,9 +144,22 @@ scored out of 100 and stays comparable with a four-question one.
 | Question | Full marks | Zero marks |
 |----------|-----------|------------|
 | Experience | at or above the minimum | no experience |
-| Expected salary | at or under budget | 1.5× budget |
+| Skills match | claimed every skill the role wants | claimed none of them |
+| Expected pay | at or under budget | 1.5× budget |
 | Relocation | willing, or not required | unwilling when required |
 | Notice period | at or under the limit | 2× the limit |
+
+Skills are matched against the campaign's wanted list, normalised for case and
+punctuation, and treated as equal when one contains the other — so "SQL" matches
+"writing SQL queries", and "analytics" matches "product analytics". Containment
+needs three characters, or short tokens match nonsense ("go" inside "google
+docs"). The wanted list is never spoken on the call, so nobody can repeat it
+back.
+
+A candidate who matches **none** of the wanted skills is capped below *Strong
+match* no matter how well they score elsewhere. Skills are one dimension of
+five, so without the cap someone with no relevant skills can still clear 75 by
+being cheap, available and willing to relocate.
 
 Between those two points the score falls off linearly. A candidate who says they
 are not interested scores 0 and is labelled accordingly. Unanswered questions

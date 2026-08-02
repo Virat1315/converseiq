@@ -63,6 +63,44 @@ values. A green banner means the dashboard can reach LiveKit.
 
 The dashboard is useless without this. Pick whichever fits.
 
+### LiveKit Cloud Agents (recommended)
+
+No second account, no server to run — it hosts the worker next to the SIP
+infrastructure it already talks to.
+
+```bash
+lk agent create --region ap-south --secrets-file agent.env .
+```
+
+`agent.env` holds every key from the root `.env` **except** `LIVEKIT_URL`,
+`LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` — Cloud injects those itself, and
+passing them is rejected as a duplicate.
+
+Pick the region nearest your callers (`us-east`, `eu-central`, `ap-south`). It
+writes a `livekit.toml` holding the agent id; commit it so later deploys update
+the same agent rather than creating a new one.
+
+Afterwards:
+
+```bash
+lk agent status
+```
+
+```bash
+lk agent logs
+```
+
+```bash
+lk agent deploy
+```
+
+Two things to know:
+
+- `LIVEKIT_LOAD_THRESHOLD` is ignored here. Cloud manages capacity itself and
+  logs a warning saying so. The variable still matters for the options below.
+- `.dockerignore` keeps `.env` out of the image. Secrets arrive as environment
+  variables at run time, so nothing is baked into a layer.
+
 ### Docker (any VPS)
 
 ```bash

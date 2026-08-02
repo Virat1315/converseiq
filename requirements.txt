@@ -1,17 +1,20 @@
-livekit-agents>=0.8.0
-livekit-api>=0.6.0
-livekit-plugins-openai>=0.6.0
-livekit-plugins-cartesia>=0.6.0
-livekit-plugins-deepgram>=0.6.0
-livekit-plugins-silero>=0.6.0
-livekit-plugins-sarvam>=0.6.0
-livekit-plugins-noise-cancellation
-python-dotenv>=1.0.0
+# Pinned to the 1.6.x line. The previous >=0.8.0 floor predated the 1.x rewrite,
+# so a fresh install could resolve to an API this code no longer matches, and
+# LiveKit Cloud Agents rejects anything below 1.2.0 outright.
+livekit-agents~=1.6.7
+livekit-api~=1.2.0
+
+# Plugins track the agents version and must move with it.
+livekit-plugins-openai~=1.6.7
+livekit-plugins-cartesia~=1.6.7
+livekit-plugins-deepgram~=1.6.7
+livekit-plugins-silero~=1.6.7
+livekit-plugins-sarvam~=1.6.7
+livekit-plugins-noise-cancellation~=0.3.0
+
+python-dotenv~=1.2
 certifi>=2024.0.0
-flask>=3.0.0
-requests>=2.31.0
 
-
-
-
-
+# Used by call_analyzer.py, the optional post-call summary service.
+flask~=3.1
+requests~=2.32

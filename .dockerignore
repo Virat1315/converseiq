@@ -1,0 +1,21 @@
+# Secrets are injected as environment variables at run time. Copying .env into
+# the image would bake credentials into every layer and every registry copy.
+.env
+.env.*
+!.env.example
+
+# The dashboard deploys separately to Vercel; the agent image does not need it.
+dashboard/
+
+# Local-only
+.venv/
+venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+node_modules/
+
+# Docs
+*.md
+!README.md

@@ -366,7 +366,15 @@ async def entrypoint(ctx: agents.JobContext):
         try:
             participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=90)
             logger.info(f"Callee joined ({participant.identity}). Greeting.")
-            await session.generate_reply(instructions=config.INITIAL_GREETING)
+            # Defer to the OPENING section of the campaign script rather than a
+            # generic greeting here — that is where the candidate's name, the
+            # role, and the English-or-Hindi question live.
+            await session.generate_reply(
+                instructions=(
+                    "The candidate has just answered the phone. Deliver your OPENING "
+                    "exactly as your instructions describe, then wait for their reply."
+                )
+            )
         except asyncio.TimeoutError:
             logger.warning("Callee never answered within 90s. Ending the job.")
             ctx.shutdown()

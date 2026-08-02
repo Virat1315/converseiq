@@ -90,13 +90,16 @@ export default function CandidatesPanel({
     setBusy(true);
     setProgress({ done: 0, total: queue.length });
 
-    const screeningInstructions = buildAgentInstructions(criteria);
-
     // One request per candidate rather than the batch endpoint: each result
     // lands in history the moment it returns, so the Results tab fills in as
     // the campaign runs instead of all at once at the end.
     let done = 0;
     for (const candidate of queue) {
+      // Imported rows with no name column fall back to the phone number. Pass
+      // undefined rather than let the agent read a phone number out loud.
+      const spokenName = candidate.name === candidate.phone ? undefined : candidate.name;
+      const screeningInstructions = buildAgentInstructions(criteria, spokenName);
+
       const record = callStore.add({
         name: candidate.name,
         phone: candidate.phone,
@@ -113,7 +116,7 @@ export default function CandidatesPanel({
           body: JSON.stringify({
             to: candidate.phone,
             callId: record.id,
-            candidateName: candidate.name,
+            candidateName: spokenName,
             screeningInstructions,
             voiceId,
             modelProvider,

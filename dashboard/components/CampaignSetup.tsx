@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import {
   MAX_QUESTIONS,
   QUESTIONS,
+  SAMPLE_CANDIDATE_NAME,
   buildAgentInstructions,
   type CampaignCriteria,
   type QuestionId,
@@ -39,7 +40,10 @@ export default function CampaignSetup({
     );
   };
 
-  const script = useMemo(() => buildAgentInstructions(criteria), [criteria]);
+  const script = useMemo(
+    () => buildAgentInstructions(criteria, SAMPLE_CANDIDATE_NAME),
+    [criteria]
+  );
   const atLimit = criteria.questions.length >= MAX_QUESTIONS;
 
   return (
@@ -178,7 +182,9 @@ export default function CampaignSetup({
           <span className="text-[11px] text-neutral-600">generated</span>
         </div>
         <p className="text-xs text-neutral-500">
-          Sent with every call in this campaign. This is what the agent is bound to.
+          Sent with every call in this campaign — this is what the agent is bound to.
+          &ldquo;{SAMPLE_CANDIDATE_NAME}&rdquo; is a placeholder; each call gets that
+          candidate&rsquo;s real name.
         </p>
         <pre className="text-[11px] leading-relaxed text-neutral-400 bg-black/40 border border-white/5 rounded-lg p-3 overflow-auto max-h-[28rem] whitespace-pre-wrap font-mono">
           {script}

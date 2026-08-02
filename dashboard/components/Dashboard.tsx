@@ -1,20 +1,22 @@
 'use client';
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { ListChecks, LogOut, Sliders, Users } from 'lucide-react';
+import { ListChecks, LogOut, PlayCircle, Sliders, Users } from 'lucide-react';
 import CampaignSetup from '@/components/CampaignSetup';
 import CandidatesPanel from '@/components/CandidatesPanel';
 import ResultsPanel from '@/components/ResultsPanel';
+import DemoPanel from '@/components/DemoPanel';
 import SetupBanner from '@/components/SetupBanner';
 import { criteriaStore } from '@/lib/call-store';
 import { DEFAULT_CRITERIA, type CampaignCriteria } from '@/lib/screening';
 
-type Tab = 'campaign' | 'candidates' | 'results';
+type Tab = 'campaign' | 'candidates' | 'results' | 'demo';
 
 const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
   { id: 'campaign', label: 'Campaign', icon: <Sliders size={14} /> },
   { id: 'candidates', label: 'Candidates', icon: <Users size={14} /> },
   { id: 'results', label: 'Results', icon: <ListChecks size={14} /> },
+  { id: 'demo', label: 'Demo', icon: <PlayCircle size={14} /> },
 ];
 
 export default function Dashboard() {
@@ -86,6 +88,9 @@ export default function Dashboard() {
       <div className={tab === 'results' ? '' : 'hidden'}>
         <ResultsPanel criteria={criteria} />
       </div>
+      {/* Mounted only when open — the tour runs a timer, and it should not tick
+          in the background while someone is running a campaign. */}
+      {tab === 'demo' && <DemoPanel />}
     </div>
   );
 }

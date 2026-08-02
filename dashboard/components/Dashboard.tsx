@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useState, useSyncExternalStore } from 'react';
-import { ListChecks, Sliders, Users } from 'lucide-react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { ListChecks, LogOut, Sliders, Users } from 'lucide-react';
 import CampaignSetup from '@/components/CampaignSetup';
 import CandidatesPanel from '@/components/CandidatesPanel';
 import ResultsPanel from '@/components/ResultsPanel';
@@ -20,6 +20,16 @@ const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
 export default function Dashboard() {
   const [tab, setTab] = useState<Tab>('candidates');
 
+  // Only show Sign out where there is a session to sign out of — locally the
+  // gate is off, so the button would do nothing.
+  const [gated, setGated] = useState(false);
+  useEffect(() => {
+    fetch('/api/health')
+      .then((r) => r.json())
+      .then((h) => setGated(Boolean(h.authRequired)))
+      .catch(() => {});
+  }, []);
+
   // Saved criteria live in localStorage, which only exists on the client.
   // useSyncExternalStore hands React a server snapshot (the defaults) and a
   // client one, so hydration matches without a setState-in-effect round trip.
@@ -35,7 +45,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       <SetupBanner />
 
-      <nav className="flex gap-1 border-b border-white/10">
+      <nav className="flex gap-1 border-b border-white/10 items-center">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -50,6 +60,20 @@ export default function Dashboard() {
             {t.label}
           </button>
         ))}
+
+        {gated && (
+          <button
+            onClick={async () => {
+              await fetch('/api/auth/logout', { method: 'POST' });
+              window.location.href = '/login';
+            }}
+            title="Sign out"
+            className="ml-auto px-3 py-2 text-xs text-neutral-500 hover:text-white transition flex items-center gap-1.5"
+          >
+            <LogOut size={13} />
+            Sign out
+          </button>
+        )}
       </nav>
 
       {/* Kept mounted so switching tabs never interrupts a running campaign. */}

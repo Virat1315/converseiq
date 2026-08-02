@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { configStatus } from '@/lib/server-utils';
+import { authConfigured, authRequired } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,5 +21,9 @@ export async function GET() {
     livekitHost: process.env.LIVEKIT_URL ? new URL(process.env.LIVEKIT_URL).host : null,
     outboundNumber: process.env.VOBIZ_OUTBOUND_NUMBER || null,
     transferNumber: process.env.DEFAULT_TRANSFER_NUMBER || null,
+    // Whether this deployment is gated. Reaching this route at all means the
+    // caller is already past the gate, so it leaks nothing.
+    authRequired: authRequired(),
+    authConfigured: authConfigured(),
   });
 }

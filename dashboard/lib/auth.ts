@@ -18,6 +18,14 @@ export function authConfigured(): boolean {
 }
 
 /**
+ * Username is optional. When DASHBOARD_USERNAME is unset the login screen asks
+ * for a password only, which keeps single-operator deployments simple.
+ */
+export function usernameRequired(): boolean {
+  return Boolean(process.env.DASHBOARD_USERNAME);
+}
+
+/**
  * Local development stays open — the trunk is only reachable from your own
  * machine, and a password prompt on every `npm run dev` is friction with no
  * security benefit. Anything deployed is gated.

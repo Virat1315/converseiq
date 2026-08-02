@@ -22,15 +22,25 @@ export async function POST(request: Request) {
   }
 
   let password: string | undefined;
+  let username: string | undefined;
   try {
-    ({ password } = await request.json());
+    ({ password, username } = await request.json());
   } catch {
     return NextResponse.json({ error: 'Request body must be JSON' }, { status: 400 });
   }
 
-  if (!password || !safeEqual(password, process.env.DASHBOARD_PASSWORD!)) {
+  const expectedUser = process.env.DASHBOARD_USERNAME;
+  const userOk = !expectedUser || safeEqual(username ?? '', expectedUser);
+  const passOk = Boolean(password) && safeEqual(password!, process.env.DASHBOARD_PASSWORD!);
+
+  // Both are checked before answering, and the message never says which half
+  // was wrong — otherwise a valid username can be confirmed by guessing.
+  if (!userOk || !passOk) {
     await new Promise((r) => setTimeout(r, WRONG_PASSWORD_DELAY_MS));
-    return NextResponse.json({ error: 'Incorrect password.' }, { status: 401 });
+    return NextResponse.json(
+      { error: expectedUser ? 'Incorrect username or password.' : 'Incorrect password.' },
+      { status: 401 }
+    );
   }
 
   const response = NextResponse.json({ success: true });

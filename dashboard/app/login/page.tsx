@@ -1,12 +1,24 @@
 'use client';
 
-import { useState } from 'react';
-import { Lock } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Lock, User } from 'lucide-react';
 
 export default function LoginPage() {
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Whether this deployment expects a username. /api/auth/config is reachable
+  // without a session, and reveals only that a username is required - not its
+  // value.
+  const [needsUsername, setNeedsUsername] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/config')
+      .then((r) => r.json())
+      .then((c) => setNeedsUsername(Boolean(c.usernameRequired)))
+      .catch(() => {});
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,7 +28,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Sign in failed');
@@ -41,6 +53,27 @@ export default function LoginPage() {
           onSubmit={submit}
           className="bg-white/[0.03] border border-white/10 rounded-xl p-5 space-y-4"
         >
+          {needsUsername && (
+            <label className="block">
+              <span className="block text-xs font-medium text-neutral-400 mb-1.5">Username</span>
+              <div className="relative">
+                <User
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600"
+                />
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoFocus
+                  autoComplete="username"
+                  className="w-full pl-9 pr-3 py-2 bg-white/[0.04] border border-white/10 rounded-lg text-white placeholder-neutral-600 focus:outline-none focus:border-white/30 transition text-sm"
+                  placeholder="username"
+                />
+              </div>
+            </label>
+          )}
+
           <label className="block">
             <span className="block text-xs font-medium text-neutral-400 mb-1.5">Password</span>
             <div className="relative">
@@ -52,7 +85,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoFocus
+                autoFocus={!needsUsername}
                 autoComplete="current-password"
                 className="w-full pl-9 pr-3 py-2 bg-white/[0.04] border border-white/10 rounded-lg text-white placeholder-neutral-600 focus:outline-none focus:border-white/30 transition text-sm"
                 placeholder="••••••••"
@@ -68,7 +101,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={busy || !password}
+            disabled={busy || !password || (needsUsername && !username)}
             className="w-full px-4 py-2 rounded-lg text-sm font-medium bg-white text-black hover:bg-neutral-200 disabled:bg-neutral-700 disabled:text-neutral-500 disabled:cursor-not-allowed transition"
           >
             {busy ? 'Checking…' : 'Sign in'}

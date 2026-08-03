@@ -128,6 +128,21 @@ export interface ScreeningAnswers {
   notes?: string;
 }
 
+/**
+ * The written report, generated from the transcript after the call.
+ *
+ * Deliberately does NOT feed the score. The number stays deterministic
+ * arithmetic over the captured answers; this is prose beside it, so identical
+ * answers can never produce different marks.
+ */
+export interface CallAssessment {
+  summary: string;
+  sentiment: 'positive' | 'neutral' | 'negative' | string;
+  keyPoints: string[];
+  concerns: string[];
+  generatedAt?: string;
+}
+
 /** One spoken turn, as recorded by the agent. */
 export interface TranscriptLine {
   role: 'agent' | 'candidate';

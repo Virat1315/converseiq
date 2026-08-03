@@ -9,6 +9,7 @@ import {
   QUESTIONS,
   VERDICT_LABEL,
   rankCandidates,
+  type CallAssessment,
   type CampaignCriteria,
   type ScreeningAnswers,
   type TranscriptLine,
@@ -54,6 +55,7 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
             duration: number;
             screening?: ScreeningAnswers | null;
             transcript?: TranscriptLine[] | null;
+            assessment?: CallAssessment | null;
           }
         >;
       };
@@ -71,6 +73,8 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
         if (live.transcript && live.transcript.length > (call.transcript?.length ?? 0)) {
           updates.transcript = live.transcript;
         }
+        // The report lands a few seconds after the answers do.
+        if (live.assessment && !call.assessment) updates.assessment = live.assessment;
 
         if (live.status === 'completed' && call.status === 'connecting') {
           updates.status = 'failed';
@@ -127,6 +131,10 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
       ...QUESTIONS.filter((q) => criteria.questions.includes(q.id)).map((q) => q.label),
       'skills_matched',
       'skills_missing',
+      'ai_summary',
+      'sentiment',
+      'key_points',
+      'concerns',
       'notes',
       'duration_seconds',
       'called_at',
@@ -156,6 +164,10 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
       // Which of the role's wanted skills the candidate actually claimed.
       r.score.dimensions.find((d) => d.id === 'skills')?.skills?.matched.join('; ') ?? '',
       r.score.dimensions.find((d) => d.id === 'skills')?.skills?.missing.join('; ') ?? '',
+      r.assessment?.summary ?? '',
+      r.assessment?.sentiment ?? '',
+      (r.assessment?.keyPoints ?? []).join('; '),
+      (r.assessment?.concerns ?? []).join('; '),
       r.answers?.notes ?? '',
       r.duration ?? '',
       r.timestamp,
@@ -336,6 +348,8 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
 
               {open && (
                 <div className="px-4 pb-4 pt-1 bg-black/20 space-y-3">
+                  {r.assessment && <Report assessment={r.assessment} />}
+
                   {r.answers ? (
                     <>
                       <div className="space-y-1.5">
@@ -474,6 +488,62 @@ function Stat({
       <p className={`text-xl font-semibold tabular-nums ${accent || 'text-white'}`}>{value}</p>
       {sub && <p className="text-[10px] text-neutral-600">{sub}</p>}
     </Card>
+  );
+}
+
+/**
+ * The written report. Sits above the score breakdown because it is what
+ * someone skimming a shortlist reads first — and it is labelled as generated,
+ * so nobody mistakes it for the deterministic part.
+ */
+function Report({ assessment }: { assessment: CallAssessment }) {
+  const tone =
+    assessment.sentiment === 'positive'
+      ? 'text-emerald-400'
+      : assessment.sentiment === 'negative'
+        ? 'text-red-400'
+        : 'text-neutral-400';
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wide">
+          AI report
+        </span>
+        <span className={`text-[10px] capitalize ${tone}`}>{assessment.sentiment}</span>
+      </div>
+
+      {assessment.summary && (
+        <p className="text-xs text-neutral-300 leading-relaxed">{assessment.summary}</p>
+      )}
+
+      {assessment.keyPoints?.length > 0 && (
+        <ul className="space-y-1">
+          {assessment.keyPoints.map((k, i) => (
+            <li key={i} className="text-[11px] text-neutral-400 flex gap-2">
+              <span className="text-neutral-700">•</span>
+              {k}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {assessment.concerns?.length > 0 && (
+        <div className="space-y-1 pt-1 border-t border-white/5">
+          <span className="text-[10px] text-amber-500/80 uppercase tracking-wide">Worth checking</span>
+          {assessment.concerns.map((c, i) => (
+            <p key={i} className="text-[11px] text-amber-200/70 flex gap-2">
+              <span className="text-amber-500/50">•</span>
+              {c}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <p className="text-[10px] text-neutral-700">
+        Written from the transcript. It does not affect the score.
+      </p>
+    </div>
   );
 }
 

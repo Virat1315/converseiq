@@ -7,6 +7,7 @@ os.environ['SSL_CERT_FILE'] = certifi.where()
 import asyncio
 import logging
 import json
+import aiohttp
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
@@ -132,6 +133,93 @@ class CallTools(llm.ToolContext):
             logger.error(f"Failed to publish call data: {e}")
             return False
 
+    async def _generate_assessment(self) -> dict | None:
+        """
+        A short written read on the call, from the transcript.
+
+        Kept strictly separate from the score: the number stays deterministic
+        arithmetic over the captured answers, and this is prose sitting beside
+        it. Letting a model influence the marks would mean identical answers
+        scoring differently on different runs.
+        """
+        if len(self.transcript) < 2:
+            return None
+
+        provider = (self.base_metadata.get("model_provider") or os.getenv("LLM_PROVIDER", "groq")).lower()
+        if provider == "groq":
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            key = os.getenv("GROQ_API_KEY")
+            model = os.getenv("GROQ_MODEL", config.GROQ_MODEL)
+        else:
+            url = "https://api.openai.com/v1/chat/completions"
+            key = os.getenv("OPENAI_API_KEY")
+            model = config.DEFAULT_LLM_MODEL
+
+        if not key:
+            logger.warning("No API key for the assessment; skipping.")
+            return None
+
+        conversation = "\n".join(f"{l['role']}: {l['text']}" for l in self.transcript)
+        role = self.base_metadata.get("role") or "the role"
+
+        system = (
+            "You are summarising a recruitment screening call for the hiring team. "
+            "Report only what the transcript supports. Do not invent detail, do not "
+            "guess at anything the candidate did not say, and do not recommend hiring "
+            "or rejecting - that decision is not yours. "
+            'Reply with JSON only: {"summary": string (2-3 sentences on how the call went), '
+            '"sentiment": "positive"|"neutral"|"negative", '
+            '"keyPoints": string[] (up to 4 short facts worth knowing), '
+            '"concerns": string[] (up to 3, or empty if none - hesitation, contradictions, '
+            "anything the team should verify)}"
+        )
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=20)
+            async with aiohttp.ClientSession(timeout=timeout) as http:
+                async with http.post(
+                    url,
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json={
+                        "model": model,
+                        "temperature": 0.2,  # Low: this is reporting, not writing.
+                        "response_format": {"type": "json_object"},
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {
+                                "role": "user",
+                                "content": f"Screening call for {role}.\n\nTranscript:\n{conversation}",
+                            },
+                        ],
+                    },
+                ) as resp:
+                    if resp.status != 200:
+                        logger.error(f"Assessment failed: HTTP {resp.status} {await resp.text()}")
+                        return None
+                    body = await resp.json()
+
+            parsed = json.loads(body["choices"][0]["message"]["content"])
+            return {
+                "summary": str(parsed.get("summary") or "").strip(),
+                "sentiment": str(parsed.get("sentiment") or "neutral").lower(),
+                "keyPoints": [str(x) for x in (parsed.get("keyPoints") or [])][:4],
+                "concerns": [str(x) for x in (parsed.get("concerns") or [])][:3],
+                "generatedAt": datetime.now(timezone.utc).isoformat(),
+            }
+        except Exception as e:
+            # A missing report is a far better outcome than a failed call.
+            logger.error(f"Could not generate assessment: {e}")
+            return None
+
+    async def _attach_assessment(self, answers: dict):
+        assessment = await self._generate_assessment()
+        if not assessment:
+            return
+        logger.info(f"Assessment: {assessment.get('sentiment')} — {assessment.get('summary', '')[:80]}")
+        await self._publish(
+            {"screening": answers, "transcript": self.transcript, "assessment": assessment}
+        )
+
     async def flush_transcript(self):
         """
         Publish the transcript even when the call ended without a submission -
@@ -192,9 +280,13 @@ class CallTools(llm.ToolContext):
             return "Could not save the answers, but continue and end the call politely."
         self.submitted = True
 
+        # Write the report while the agent says goodbye, so it costs no extra
+        # airtime. It re-publishes with the assessment attached when ready.
+        asyncio.create_task(self._attach_assessment(answers))
+
         # Don't leave the line open once there is nothing left to ask — an idle
-        # SIP leg is billed like any other.
-        asyncio.create_task(self._end_call_after(12))
+        # SIP leg is billed like any other. Long enough for the report to land.
+        asyncio.create_task(self._end_call_after(15))
         return "Recorded. Thank the candidate briefly and end the call."
 
     async def _end_call_after(self, seconds: int):

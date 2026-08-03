@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ConfigError, describeError, getRoomService } from '@/lib/server-utils';
-import type { ScreeningAnswers, TranscriptLine } from '@/lib/screening';
+import type { CallAssessment, ScreeningAnswers, TranscriptLine } from '@/lib/screening';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,16 +24,19 @@ export type LiveStatus = 'connecting' | 'ringing' | 'connected' | 'completed';
 function readRoomData(metadata: string | undefined): {
   screening: ScreeningAnswers | null;
   transcript: TranscriptLine[] | null;
+  assessment: CallAssessment | null;
 } {
-  if (!metadata) return { screening: null, transcript: null };
+  const empty = { screening: null, transcript: null, assessment: null };
+  if (!metadata) return empty;
   try {
     const parsed = JSON.parse(metadata);
     return {
       screening: parsed?.screening ?? null,
       transcript: Array.isArray(parsed?.transcript) ? parsed.transcript : null,
+      assessment: parsed?.assessment ?? null,
     };
   } catch {
-    return { screening: null, transcript: null };
+    return empty;
   }
 }
 
@@ -70,6 +73,7 @@ export async function GET(request: NextRequest) {
         agentPresent: boolean;
         screening?: ScreeningAnswers | null;
         transcript?: TranscriptLine[] | null;
+        assessment?: CallAssessment | null;
       }
     > = {};
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  ComplianceError,
   ConfigError,
   describeError,
   dispatchCall,
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
       voiceId: body.voiceId as string | undefined,
       candidateName: body.candidateName as string | undefined,
       screeningInstructions: body.screeningInstructions as string | undefined,
+      language: body.language as string | undefined,
     });
 
     return NextResponse.json({
@@ -58,6 +60,10 @@ export async function POST(request: Request) {
     if (e instanceof ConfigError) {
       // 503, not 500: the request was fine, the deployment is not configured.
       return NextResponse.json({ error: e.message, missing: e.missing }, { status: 503 });
+    }
+    if (e instanceof ComplianceError) {
+      // 403: understood and deliberately refused, not a failure to try.
+      return NextResponse.json({ error: e.message, compliance: true }, { status: 403 });
     }
     console.error('Dispatch failed:', e);
     return NextResponse.json({ error: describeError(e) }, { status: 502 });

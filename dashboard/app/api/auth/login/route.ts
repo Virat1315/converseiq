@@ -13,11 +13,56 @@ export const dynamic = 'force-dynamic';
 /** Slows down anyone walking a password list. */
 const WRONG_PASSWORD_DELAY_MS = 700;
 
+/**
+ * Per-IP throttle.
+ *
+ * Best effort only: serverless instances do not share memory, so a distributed
+ * attacker gets one budget per warm instance. It still turns a fast local
+ * script into a slow one, which is the common case. A shared store (Upstash,
+ * Redis) is the real fix once this guards anything valuable.
+ */
+const MAX_ATTEMPTS = 8;
+const WINDOW_MS = 5 * 60 * 1000;
+const attempts = new Map<string, { count: number; resetAt: number }>();
+
+function rateLimit(ip: string): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  const entry = attempts.get(ip);
+
+  if (!entry || now > entry.resetAt) {
+    attempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    // Opportunistic cleanup — no timer, and the map cannot grow unbounded.
+    if (attempts.size > 5000) {
+      for (const [k, v] of attempts) if (now > v.resetAt) attempts.delete(k);
+    }
+    return { allowed: true, retryAfterSec: 0 };
+  }
+
+  entry.count += 1;
+  return {
+    allowed: entry.count <= MAX_ATTEMPTS,
+    retryAfterSec: Math.ceil((entry.resetAt - now) / 1000),
+  };
+}
+
+function clientIp(request: Request): string {
+  const fwd = request.headers.get('x-forwarded-for');
+  return fwd?.split(',')[0].trim() || request.headers.get('x-real-ip') || 'unknown';
+}
+
 export async function POST(request: Request) {
   if (!authConfigured()) {
     return NextResponse.json(
       { error: 'No DASHBOARD_PASSWORD is set on this deployment.' },
       { status: 503 }
+    );
+  }
+
+  const limit = rateLimit(clientIp(request));
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: `Too many attempts. Try again in ${limit.retryAfterSec}s.` },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSec) } }
     );
   }
 

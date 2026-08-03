@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ConfigError, describeError, getRoomService } from '@/lib/server-utils';
-import type { ScreeningAnswers } from '@/lib/screening';
+import type { ScreeningAnswers, TranscriptLine } from '@/lib/screening';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,13 +21,19 @@ export type LiveStatus = 'connecting' | 'ringing' | 'connected' | 'completed';
  * them. The agent deliberately keeps the line open for a few seconds after
  * submitting, which leaves several polls' worth of margin.
  */
-function readScreening(metadata: string | undefined): ScreeningAnswers | null {
-  if (!metadata) return null;
+function readRoomData(metadata: string | undefined): {
+  screening: ScreeningAnswers | null;
+  transcript: TranscriptLine[] | null;
+} {
+  if (!metadata) return { screening: null, transcript: null };
   try {
     const parsed = JSON.parse(metadata);
-    return parsed?.screening ?? null;
+    return {
+      screening: parsed?.screening ?? null,
+      transcript: Array.isArray(parsed?.transcript) ? parsed.transcript : null,
+    };
   } catch {
-    return null;
+    return { screening: null, transcript: null };
   }
 }
 
@@ -63,6 +69,7 @@ export async function GET(request: NextRequest) {
         participants: number;
         agentPresent: boolean;
         screening?: ScreeningAnswers | null;
+        transcript?: TranscriptLine[] | null;
       }
     > = {};
 
@@ -70,7 +77,12 @@ export async function GET(request: NextRequest) {
       wanted.map(async (name) => {
         const room = live.get(name);
         if (!room) {
-          statuses[name] = { status: 'completed', duration: 0, participants: 0, agentPresent: false };
+          statuses[name] = {
+            status: 'completed',
+            duration: 0,
+            participants: 0,
+            agentPresent: false,
+          };
           return;
         }
 
@@ -93,9 +105,9 @@ export async function GET(request: NextRequest) {
           duration,
           participants: participants.length,
           agentPresent,
-          // The agent writes answers back onto the room metadata as it collects
-          // them, so they arrive on this poll with no extra plumbing.
-          screening: readScreening(room.metadata),
+          // The agent writes answers and the transcript back onto the room
+          // metadata, so both arrive on this poll with no extra plumbing.
+          ...readRoomData(room.metadata),
         };
       })
     );

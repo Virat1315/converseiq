@@ -37,6 +37,35 @@ export const MODELS: ModelOption[] = [
 export const DEFAULT_VOICE = 'anushka';
 export const DEFAULT_MODEL = 'groq';
 
+/**
+ * Sarvam speaks far more than Hindi. The agent asks which the candidate
+ * prefers, so this sets what it offers as the alternative to English.
+ */
+export interface LanguageOption {
+  /** BCP-47 tag Sarvam expects as target_language_code. */
+  id: string;
+  label: string;
+}
+
+export const LANGUAGES: LanguageOption[] = [
+  { id: 'hi-IN', label: 'Hindi' },
+  { id: 'en-IN', label: 'English only' },
+  { id: 'ta-IN', label: 'Tamil' },
+  { id: 'te-IN', label: 'Telugu' },
+  { id: 'bn-IN', label: 'Bengali' },
+  { id: 'mr-IN', label: 'Marathi' },
+  { id: 'gu-IN', label: 'Gujarati' },
+  { id: 'kn-IN', label: 'Kannada' },
+  { id: 'ml-IN', label: 'Malayalam' },
+  { id: 'pa-IN', label: 'Punjabi' },
+];
+
+export const DEFAULT_LANGUAGE = 'hi-IN';
+
+export function languageLabel(id: string): string {
+  return LANGUAGES.find((l) => l.id === id)?.label ?? id;
+}
+
 export const DEFAULT_PROMPT =
   'You are calling about a Product Manager opening. Introduce yourself, ask if they are interested, ' +
   'and offer to collect their email for follow-up.';

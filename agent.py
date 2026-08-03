@@ -36,7 +36,7 @@ import config
 # You can find this by running 'python setup_trunk.py --list' or checking LiveKit Dashboard 
 
 
-def _build_tts(config_provider: str = None, config_voice: str = None):
+def _build_tts(config_provider: str = None, config_voice: str = None, config_language: str = None):
     """Configure the Text-to-Speech provider based on env vars or dynamic config."""
     # Priority: Config > Env Var > Default
     provider = (config_provider or os.getenv("TTS_PROVIDER", config.DEFAULT_TTS_PROVIDER)).lower()
@@ -56,7 +56,10 @@ def _build_tts(config_provider: str = None, config_voice: str = None):
         model = os.getenv("SARVAM_TTS_MODEL", config.SARVAM_MODEL)
         # Use dynamic voice or env var or default
         voice = config_voice or os.getenv("SARVAM_VOICE", "anushka")
-        language = os.getenv("SARVAM_LANGUAGE", config.SARVAM_LANGUAGE)
+        # The campaign's language wins: it is what the agent offered the
+        # candidate, so the voice has to be able to speak it.
+        language = config_language or os.getenv("SARVAM_LANGUAGE", config.SARVAM_LANGUAGE)
+        logger.info(f"Sarvam TTS language: {language}")
         return sarvam.TTS(model=model, speaker=voice, target_language_code=language)
 
     if provider == "deepgram":
@@ -97,6 +100,47 @@ class CallTools(llm.ToolContext):
         self.phone_number = phone_number
         self.base_metadata = base_metadata or {}
         self.submitted = False
+        # Every line spoken, in order. Four numbers are not enough to trust a
+        # score - whoever reads the shortlist needs to see what was actually said.
+        self.transcript: list[dict] = []
+
+    def record_line(self, role: str, text: str):
+        text = (text or "").strip()
+        if not text:
+            return
+        self.transcript.append(
+            {
+                "role": "agent" if role == "assistant" else "candidate",
+                "text": text,
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+    async def _publish(self, extra: dict) -> bool:
+        """Merge into the room metadata the dashboard already polls."""
+        merged = dict(self.base_metadata)
+        merged.update(extra)
+        try:
+            await self.ctx.api.room.update_room_metadata(
+                api.UpdateRoomMetadataRequest(
+                    room=self.ctx.room.name,
+                    metadata=json.dumps(merged),
+                )
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to publish call data: {e}")
+            return False
+
+    async def flush_transcript(self):
+        """
+        Publish the transcript even when the call ended without a submission -
+        a candidate who hangs up halfway still leaves something worth reading.
+        """
+        if not self.transcript or self.submitted:
+            return
+        logger.info(f"Flushing partial transcript ({len(self.transcript)} lines)")
+        await self._publish({"transcript": self.transcript, "partial": True})
 
     @llm.function_tool(
         description=(
@@ -144,20 +188,9 @@ class CallTools(llm.ToolContext):
 
         # Merge, don't replace — the room metadata also carries the prompt and
         # phone number that the dashboard wrote when it created the room.
-        merged = dict(self.base_metadata)
-        merged["screening"] = answers
-
-        try:
-            await self.ctx.api.room.update_room_metadata(
-                api.UpdateRoomMetadataRequest(
-                    room=self.ctx.room.name,
-                    metadata=json.dumps(merged),
-                )
-            )
-            self.submitted = True
-        except Exception as e:
-            logger.error(f"Failed to publish screening answers: {e}")
+        if not await self._publish({"screening": answers, "transcript": self.transcript}):
             return "Could not save the answers, but continue and end the call politely."
+        self.submitted = True
 
         # Don't leave the line open once there is nothing left to ask — an idle
         # SIP leg is billed like any other.
@@ -285,13 +318,29 @@ async def entrypoint(ctx: agents.JobContext):
     # Initialize function context
     fnc_ctx = CallTools(ctx, phone_number, base_metadata=config_dict)
 
+    # A hang-up mid-call still leaves a readable transcript behind.
+    ctx.add_shutdown_callback(fnc_ctx.flush_transcript)
+
     # Initialize the Agent Session with plugins
     session = AgentSession(
         vad=silero.VAD.load(),
         stt=deepgram.STT(model=config.STT_MODEL, language=config.STT_LANGUAGE), 
         llm=_build_llm(config_dict.get("model_provider")),
-        tts=_build_tts(config_dict.get("model_provider"), config_dict.get("voice_id")),
+        tts=_build_tts(
+            config_dict.get("model_provider"),
+            config_dict.get("voice_id"),
+            config_dict.get("language"),
+        ),
     )
+
+    @session.on("conversation_item_added")
+    def _on_item(ev):
+        # Fires for each completed turn on both sides. AgentHandoff items have
+        # no text_content, so guard rather than assume a ChatMessage.
+        item = getattr(ev, "item", None)
+        text = getattr(item, "text_content", None)
+        if text:
+            fnc_ctx.record_line(getattr(item, "role", "assistant"), text)
 
     # Start the session
     await session.start(

@@ -52,6 +52,7 @@ export async function dispatchScreeningCall(args: DispatchArgs): Promise<Dispatc
         callId: record.id,
         candidateName: spokenName,
         screeningInstructions,
+        language: criteria.language,
         voiceId,
         modelProvider,
       }),
@@ -71,6 +72,13 @@ export async function dispatchScreeningCall(args: DispatchArgs): Promise<Dispatc
     callStore.update(record.id, { status: 'failed', error });
     // A misconfigured deployment fails identically for everyone left in the
     // queue — no point generating forty copies of the same message.
-    return { record, ok: false, error, fatal: error.includes('Missing environment variable') };
+    // A missing variable or a closed calling window will fail identically for
+    // every remaining candidate. A suppressed number will not.
+    const fatal =
+      error.includes('Missing environment variable') ||
+      error.includes('Calls are only placed between') ||
+      error.includes('Calling is not permitted on');
+
+    return { record, ok: false, error, fatal };
   }
 }

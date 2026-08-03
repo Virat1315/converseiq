@@ -84,6 +84,10 @@ export interface CampaignCriteria {
   minYearsExperience: number;
   /** Longest notice period still workable, in days. */
   maxNoticeDays: number;
+  /** The language offered alongside English, as a BCP-47 tag. */
+  language: string;
+  /** Human name for that language, used in the script. */
+  languageLabel: string;
 }
 
 export const DEFAULT_CRITERIA: CampaignCriteria = {
@@ -103,6 +107,8 @@ export const DEFAULT_CRITERIA: CampaignCriteria = {
   relocationRequired: true,
   minYearsExperience: 1,
   maxNoticeDays: 30,
+  language: 'hi-IN',
+  languageLabel: 'Hindi',
 };
 
 // ---------------------------------------------------------------------------
@@ -120,6 +126,13 @@ export interface ScreeningAnswers {
   noticePeriodDays: number | null;
   /** Background the candidate gave, plus anything else notable. */
   notes?: string;
+}
+
+/** One spoken turn, as recorded by the agent. */
+export interface TranscriptLine {
+  role: 'agent' | 'candidate';
+  text: string;
+  at?: string;
 }
 
 export const EMPTY_ANSWERS: ScreeningAnswers = {
@@ -428,8 +441,11 @@ TONE: warm, upbeat and genuinely excited about the role. Sound like a friendly p
 OPENING — do this first, before anything else:
 - Greet ${greetBy}.
 - Say you are calling from ${criteria.company} about a ${criteria.role} opening there.
-- Ask whether they would be more comfortable continuing in English or Hindi, and then speak that language for the rest of the call.
-Keep the whole opening to two short sentences.
+- Say WHY you are calling them: their profile came through for this role, and you need a few quick details to pass to the recruiter. An unexpected call is unsettling until the person knows what it is about and that it is short.
+- Ask whether they would be more comfortable continuing in English or ${criteria.languageLabel || 'Hindi'}, and then speak that language for the rest of the call.
+Keep the opening to two or three short sentences.
+
+If at any point they ask why you are calling, who gave them their number, or how long this will take, answer plainly: ${criteria.company} is hiring for the ${criteria.role} role, their profile came up as a potential fit, and you have ${enabled.length} quick questions that take about a minute. That is context about the call itself, so it is always allowed — it is the only thing you may explain.
 
 Then ask the ${enabled.length} questions below, in order:
 

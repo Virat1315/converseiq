@@ -9,6 +9,7 @@ import {
   type CampaignCriteria,
   type QuestionId,
 } from '@/lib/screening';
+import { LANGUAGES, languageLabel } from '@/lib/agent-options';
 import { Card, Field, Notice, Toggle, inputClass } from '@/components/ui';
 
 /**
@@ -69,6 +70,26 @@ export default function CampaignSetup({
               />
             </Field>
           </div>
+
+          <Field
+            label="Second language"
+            hint="The agent offers this alongside English at the start of the call."
+          >
+            <select
+              value={criteria.language}
+              onChange={(e) => {
+                const next = e.target.value;
+                onChange({ ...criteria, language: next, languageLabel: languageLabel(next) });
+              }}
+              className={inputClass}
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l.id} value={l.id} className="bg-neutral-900">
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </Field>
         </Card>
 
         <Card className="p-5 space-y-4">

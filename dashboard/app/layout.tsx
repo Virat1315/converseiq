@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -13,9 +13,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ConverseIQ — AI Voice Agent Console",
+  title: "ConverseIQ — AI Phone Screening",
   description:
-    "Dispatch AI voice agents to real phone numbers, watch calls live, and run bulk campaigns.",
+    "Call candidates with an AI agent, ask a fixed set of screening questions, and rank the answers into a shortlist.",
+};
+
+/**
+ * Without this, phones render the page at a notional desktop width and then
+ * zoom out — the layout is technically responsive but nobody ever sees the
+ * mobile version of it.
+ *
+ * maximumScale is deliberately left alone: blocking pinch-zoom breaks the page
+ * for anyone who needs to magnify it.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0a0a0a",
 };
 
 export default function RootLayout({

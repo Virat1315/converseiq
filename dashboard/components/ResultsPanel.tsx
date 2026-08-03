@@ -11,7 +11,9 @@ import {
   rankCandidates,
   type CampaignCriteria,
   type ScreeningAnswers,
+  type TranscriptLine,
 } from '@/lib/screening';
+import { estimateCallCost, formatMoney } from '@/lib/cost';
 import { formatPhone } from '@/lib/phone';
 import { Button, Card, EmptyState } from '@/components/ui';
 
@@ -47,7 +49,12 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
       const { statuses } = (await res.json()) as {
         statuses: Record<
           string,
-          { status: CallStatus; duration: number; screening?: ScreeningAnswers | null }
+          {
+            status: CallStatus;
+            duration: number;
+            screening?: ScreeningAnswers | null;
+            transcript?: TranscriptLine[] | null;
+          }
         >;
       };
 
@@ -57,9 +64,13 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
 
         const updates: Partial<CallRecord> = {};
 
-        // Copy answers across the moment they appear — the room is deleted
-        // seconds later and its metadata goes with it.
+        // Copy answers and transcript across the moment they appear — the room
+        // is deleted seconds later and its metadata goes with it.
         if (live.screening && !call.answers) updates.answers = live.screening;
+        // The transcript grows during the call, so take the longest seen.
+        if (live.transcript && live.transcript.length > (call.transcript?.length ?? 0)) {
+          updates.transcript = live.transcript;
+        }
 
         if (live.status === 'completed' && call.status === 'connecting') {
           updates.status = 'failed';
@@ -87,14 +98,21 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
 
   const summary = useMemo(() => {
     const screened = ranked.filter((r) => r.answers);
+    // Anything with airtime was answered; a call that never connected has none.
+    const answered = ranked.filter((r) => (r.duration ?? 0) > 0);
+    const spend = ranked.reduce((sum, r) => sum + estimateCallCost(r.duration ?? 0).total, 0);
+
     return {
-      total: ranked.length,
+      dialled: ranked.length,
+      answered: answered.length,
       screened: screened.length,
       strong: screened.filter((r) => r.score.verdict === 'strong').length,
       declined: screened.filter((r) => r.score.verdict === 'declined').length,
       inFlight: ranked.filter(
         (r) => r.status === 'connecting' || r.status === 'ringing' || r.status === 'connected'
       ).length,
+      spend: Math.round(spend * 100) / 100,
+      talkMinutes: Math.round(ranked.reduce((s, r) => s + (r.duration ?? 0), 0) / 6) / 10,
     };
   }, [ranked]);
 
@@ -186,12 +204,38 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label="Candidates" value={summary.total} />
-        <Stat label="Screened" value={summary.screened} />
-        <Stat label="Strong match" value={summary.strong} accent="text-emerald-400" />
-        <Stat label="In progress" value={summary.inFlight} accent="text-blue-400" />
+      {/* Funnel: each step is a subset of the one before it, so the drop-off
+          between them is where candidates are actually being lost. */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <Stat label="Dialled" value={summary.dialled} />
+        <Stat
+          label="Answered"
+          value={summary.answered}
+          sub={pct(summary.answered, summary.dialled)}
+        />
+        <Stat
+          label="Screened"
+          value={summary.screened}
+          sub={pct(summary.screened, summary.dialled)}
+        />
+        <Stat
+          label="Strong match"
+          value={summary.strong}
+          sub={pct(summary.strong, summary.screened)}
+          accent="text-emerald-400"
+        />
+        <Stat
+          label="Estimated spend"
+          value={formatMoney(summary.spend)}
+          sub={`${summary.talkMinutes} min talk`}
+        />
       </div>
+
+      {summary.inFlight > 0 && (
+        <p className="text-[11px] text-blue-400 animate-pulse">
+          {summary.inFlight} call{summary.inFlight === 1 ? '' : 's'} in progress…
+        </p>
+      )}
 
       <div className="flex items-center justify-between">
         <div>
@@ -247,7 +291,7 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
                   <StatusChip status={r.status} />
                 </div>
 
-                <div className="w-24 shrink-0 text-right">
+                <div className="w-16 sm:w-24 shrink-0 text-right">
                   {r.answers ? (
                     <>
                       <span className="text-sm font-semibold text-white tabular-nums">{r.score.total}</span>
@@ -297,22 +341,24 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
                       <div className="space-y-1.5">
                         {r.score.dimensions.map((d) => (
                           <div key={d.id} className="space-y-1.5">
-                            <div className="flex items-center gap-3 text-xs">
-                              <span className="w-28 text-neutral-500 shrink-0">{d.label}</span>
+                            <div className="flex items-center gap-2 sm:gap-3 text-xs">
+                              <span className="w-20 sm:w-28 text-neutral-500 shrink-0">{d.label}</span>
                               <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-white/60 rounded-full transition-all"
                                   style={{ width: `${(d.ratio ?? 0) * 100}%` }}
                                 />
                               </div>
-                              <span className="w-40 text-neutral-400 text-right shrink-0">{d.detail}</span>
+                              <span className="hidden sm:block w-40 text-neutral-400 text-right shrink-0">
+                                {d.detail}
+                              </span>
                               <span className="w-12 text-neutral-500 text-right tabular-nums shrink-0">
                                 {d.points}/{d.max}
                               </span>
                             </div>
 
                             {d.skills && (
-                              <div className="flex flex-wrap gap-1 pl-28 ml-3">
+                              <div className="flex flex-wrap gap-1 sm:pl-28 sm:ml-3">
                                 {d.skills.matched.map((s) => (
                                   <Chip key={`m-${s}`} tone="match">
                                     {s}
@@ -359,9 +405,23 @@ export default function ResultsPanel({ criteria }: { criteria: CampaignCriteria 
                     </p>
                   )}
 
+                  {r.transcript && r.transcript.length > 0 && (
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wide">
+                        Transcript
+                      </span>
+                      <Transcript lines={r.transcript} />
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-4 text-[11px] text-neutral-600">
                     <span>{new Date(r.timestamp).toLocaleString()}</span>
                     {r.duration ? <span>{formatDuration(r.duration)}</span> : null}
+                    {r.duration ? (
+                      <span title="Estimated across telephony, STT, TTS, model and LiveKit">
+                        ~{formatMoney(estimateCallCost(r.duration).total)}
+                      </span>
+                    ) : null}
                     {r.voiceId && <span>{r.voiceId}</span>}
                     <button
                       onClick={() => callStore.remove(r.id)}
@@ -392,12 +452,46 @@ function Chip({ tone, children }: { tone: 'match' | 'missing' | 'extra'; childre
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: number; accent?: string }) {
+function pct(part: number, whole: number): string | undefined {
+  if (!whole) return undefined;
+  return `${Math.round((part / whole) * 100)}%`;
+}
+
+function Stat({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: number | string;
+  sub?: string;
+  accent?: string;
+}) {
   return (
     <Card className="px-4 py-3">
       <p className="text-[11px] text-neutral-500">{label}</p>
       <p className={`text-xl font-semibold tabular-nums ${accent || 'text-white'}`}>{value}</p>
+      {sub && <p className="text-[10px] text-neutral-600">{sub}</p>}
     </Card>
+  );
+}
+
+/** The conversation, as recorded by the agent. */
+function Transcript({ lines }: { lines: TranscriptLine[] }) {
+  return (
+    <div className="space-y-1.5 max-h-64 overflow-y-auto bg-black/30 rounded-lg p-3 border border-white/5">
+      {lines.map((l, i) => (
+        <p key={i} className="text-xs leading-relaxed">
+          <span className={l.role === 'agent' ? 'text-blue-400' : 'text-neutral-600'}>
+            {l.role === 'agent' ? 'Agent' : 'Candidate'}
+          </span>{' '}
+          <span className={l.role === 'agent' ? 'text-neutral-300' : 'text-neutral-400'}>
+            {l.text}
+          </span>
+        </p>
+      ))}
+    </div>
   );
 }
 

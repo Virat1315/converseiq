@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  ComplianceError,
   ConfigError,
   describeError,
   dispatchCall,
@@ -81,6 +82,15 @@ export async function POST(request: Request) {
       if (e instanceof ConfigError) {
         // Nothing in the batch can succeed; fail fast rather than N times.
         return NextResponse.json({ error: e.message, missing: e.missing }, { status: 503 });
+      }
+      if (e instanceof ComplianceError) {
+        // A closed calling window applies to the whole batch, but a suppressed
+        // number is specific to one entry — only the former should abort.
+        if (!e.message.includes('do-not-call')) {
+          return NextResponse.json({ error: e.message, compliance: true }, { status: 403 });
+        }
+        results.push({ phoneNumber, name, status: 'failed', error: e.message });
+        continue;
       }
       console.error(`Failed to dispatch ${phoneNumber}:`, e);
       results.push({ phoneNumber, name, status: 'failed', error: describeError(e) });

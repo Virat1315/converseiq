@@ -13,7 +13,7 @@
  * from LiveKit via /api/status, which is the only source that can't go stale.
  */
 
-import type { CampaignCriteria, ScreeningAnswers } from './screening';
+import type { CampaignCriteria, ScreeningAnswers, TranscriptLine } from './screening';
 
 export type CallStatus = 'pending' | 'connecting' | 'ringing' | 'connected' | 'completed' | 'failed';
 
@@ -37,6 +37,8 @@ export interface CallRecord {
    * takes its metadata with it.
    */
   answers?: ScreeningAnswers | null;
+  /** What was actually said, copied across on the poll that first sees it. */
+  transcript?: TranscriptLine[] | null;
 }
 
 const STORAGE_KEY = 'converseiq.calls.v1';

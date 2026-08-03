@@ -1,4 +1,13 @@
 import { AgentDispatchClient, RoomServiceClient, SipClient } from 'livekit-server-sdk';
+import { checkCallingWindow, isSuppressed } from './compliance';
+
+/** A call that was refused on purpose, rather than one that failed. */
+export class ComplianceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ComplianceError';
+  }
+}
 
 /**
  * Must match `agent_name` in agent.py's WorkerOptions. Registering a worker
@@ -134,6 +143,8 @@ export interface DispatchOptions {
    * over `prompt` in agent.py — this is what keeps the bot on task.
    */
   screeningInstructions?: string;
+  /** BCP-47 tag for the non-English language offered, e.g. "ta-IN". */
+  language?: string;
 }
 
 export interface DispatchResult {
@@ -151,14 +162,34 @@ export interface DispatchResult {
  * room metadata, and starts talking once the callee answers.
  */
 export async function dispatchCall(opts: DispatchOptions): Promise<DispatchResult> {
-  const { phoneNumber, prompt, callId, modelProvider, voiceId, candidateName, screeningInstructions } =
-    opts;
+  const {
+    phoneNumber,
+    prompt,
+    callId,
+    modelProvider,
+    voiceId,
+    candidateName,
+    screeningInstructions,
+    language,
+  } = opts;
 
   // Report every missing variable at once — telling someone about the trunk id
   // only to fail again on the API key wastes a whole round trip.
   const { missingRequired, missingTelephony } = configStatus();
   if (missingRequired.length || missingTelephony.length) {
     throw new ConfigError([...missingRequired, ...missingTelephony]);
+  }
+
+  // Compliance is checked here rather than in the UI, so it cannot be skipped
+  // by calling the API directly.
+  if (isSuppressed(phoneNumber)) {
+    throw new ComplianceError(
+      `${phoneNumber} is on the do-not-call list and was not dialled.`
+    );
+  }
+  const window = checkCallingWindow();
+  if (!window.allowed) {
+    throw new ComplianceError(window.reason!);
   }
 
   const trunkId = getTrunkId();
@@ -176,6 +207,7 @@ export async function dispatchCall(opts: DispatchOptions): Promise<DispatchResul
     voice_id: voiceId,
     candidate_name: candidateName,
     screening_instructions: screeningInstructions,
+    language: language,
     // We create the SIP participant below, so the agent must not dial as well —
     // otherwise the callee's phone rings twice for one requested call.
     agent_dials: false,

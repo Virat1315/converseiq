@@ -29,6 +29,9 @@ export default function CandidatesPanel({
   const [phone, setPhone] = useState('');
   const [voiceId, setVoiceId] = useState(DEFAULT_VOICE);
   const [modelProvider, setModelProvider] = useState(DEFAULT_MODEL);
+  // Simultaneous calls. Cap this at the number of channels your SIP trunk
+  // allows, or the extras are rejected by the carrier rather than queued.
+  const [concurrency, setConcurrency] = useState(3);
 
   const [error, setError] = useState('');
   const [importInfo, setImportInfo] = useState<string | null>(null);
@@ -93,24 +96,43 @@ export default function CandidatesPanel({
     // One request per candidate rather than the batch endpoint: each result
     // lands in history the moment it returns, so the Results tab fills in as
     // the campaign runs instead of all at once at the end.
+    //
+    // Run several at once. Strictly sequential meant 50 candidates at roughly
+    // 90s each was over an hour of babysitting; the ceiling is how many
+    // simultaneous channels the SIP trunk allows, not how fast we can loop.
     let done = 0;
-    for (const candidate of queue) {
-      const outcome = await dispatchScreeningCall({
-        name: candidate.name,
-        phone: candidate.phone,
-        criteria,
-        voiceId,
-        modelProvider,
-      });
+    let aborted = false;
+    const pending = [...queue];
 
-      if (outcome.fatal) {
-        setError(outcome.error!);
-        break;
+    const worker = async () => {
+      while (!aborted) {
+        const candidate = pending.shift();
+        if (!candidate) return;
+
+        const outcome = await dispatchScreeningCall({
+          name: candidate.name,
+          phone: candidate.phone,
+          criteria,
+          voiceId,
+          modelProvider,
+        });
+
+        // A closed calling window or missing config fails identically for
+        // everyone left, so stop the whole run rather than repeat it N times.
+        if (outcome.fatal) {
+          aborted = true;
+          setError(outcome.error!);
+          return;
+        }
+
+        done += 1;
+        setProgress({ done, total: queue.length });
       }
+    };
 
-      done += 1;
-      setProgress({ done, total: queue.length });
-    }
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, queue.length) }, () => worker())
+    );
 
     setQueue([]);
     setBusy(false);
@@ -236,6 +258,20 @@ export default function CandidatesPanel({
               </select>
             </Field>
           </div>
+
+          <Field
+            label={`Simultaneous calls — ${concurrency}`}
+            hint="Keep at or below the channels your SIP trunk allows."
+          >
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={concurrency}
+              onChange={(e) => setConcurrency(Number(e.target.value))}
+              className="w-full h-1 accent-white cursor-pointer"
+            />
+          </Field>
         </Card>
       </div>
 

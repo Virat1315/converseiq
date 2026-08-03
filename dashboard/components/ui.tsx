@@ -72,7 +72,9 @@ export function Toggle({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="flex items-center gap-3 text-sm text-neutral-300 hover:text-white transition"
+      // min-height keeps the switch thumb-sized on a phone without inflating
+      // the track itself, which lives in the span below.
+      className="flex items-center gap-3 text-sm text-neutral-300 hover:text-white transition min-h-[36px]"
     >
       <span
         className={`w-9 h-5 rounded-full p-0.5 transition shrink-0 ${checked ? 'bg-white' : 'bg-white/15'}`}

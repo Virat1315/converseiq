@@ -269,7 +269,7 @@ export default function CandidatesPanel({
               max={10}
               value={concurrency}
               onChange={(e) => setConcurrency(Number(e.target.value))}
-              className="w-full h-1 accent-white cursor-pointer"
+              className="w-full"
             />
           </Field>
         </Card>

@@ -1,28 +1,118 @@
 @import "tailwindcss";
 
-@theme {
-  --color-glass: rgba(255, 255, 255, 0.05);
-  --color-glassBorder: rgba(255, 255, 255, 0.1);
-
-  /* Retain gradient extensions if needed, or rely on standard utilities */
-}
-
 :root {
-  --foreground-rgb: 255, 255, 255;
-  --background-start-rgb: 0, 0, 0;
-  --background-end-rgb: 0, 0, 0;
+  color-scheme: dark;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: black;
-  /* Simplified background */
+  color: #fff;
+  background: #0a0a0a;
+  /* Stops iOS Safari inflating text in the landscape orientation. */
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+   Range inputs
+   The default track is a few pixels tall, which is fine with a mouse and close
+   to unusable with a thumb. The element gets a 36px touch area while the track
+   stays visually thin.
+   --------------------------------------------------------------------------- */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2.25rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 999px;
+  background: #fff;
+  border: none;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 999px;
+  background: #fff;
+}
+
+/* ---------------------------------------------------------------------------
+   Touch ergonomics
+   --------------------------------------------------------------------------- */
+@media (hover: none) and (pointer: coarse) {
+  /* Anything interactive gets a thumb-sized target. Applied only on touch
+     devices so the desktop layout keeps its tighter spacing. */
+  button,
+  a[href],
+  select,
+  input[type="file"] {
+    min-height: 40px;
+  }
+
+  /* Inline links inside prose should not become 40px tall blocks. */
+  p a[href],
+  span a[href],
+  li a[href],
+  code a[href] {
+    min-height: 0;
+  }
+
+  /* iOS zooms the page when a focused field is under 16px. */
+  input[type="text"],
+  input[type="tel"],
+  input[type="password"],
+  input[type="number"],
+  input[type="email"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Respect the notch and the home indicator on phones. */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
-
+/* Thin scrollbars, so overflow areas do not eat layout width. */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}

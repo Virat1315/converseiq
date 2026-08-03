@@ -38,7 +38,7 @@ export default function DemoHero() {
       <div className="flex items-center justify-between">
         <button
           onClick={toggle}
-          className="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-white transition"
+          className="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-white transition min-h-[36px] pr-2"
         >
           <ChevronDown
             size={13}
@@ -52,7 +52,7 @@ export default function DemoHero() {
             href={demo.href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] text-neutral-600 hover:text-white transition inline-flex items-center gap-1"
+            className="text-[11px] text-neutral-600 hover:text-white transition inline-flex items-center gap-1 min-h-[36px] pl-2"
           >
             Open original <ExternalLink size={10} />
           </a>

@@ -343,13 +343,13 @@ export default function DemoPlayer() {
         {SCENES[active].render(progressInScene)}
       </div>
 
-      <div className="flex items-center gap-3 px-4 py-2.5 border-t border-white/10 bg-black/30">
+      <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1 sm:py-2 border-t border-white/10 bg-black/30">
         <button
           onClick={() => (done ? restart() : setPlaying((v) => !v))}
-          className="p-1.5 rounded-md text-neutral-300 hover:text-white hover:bg-white/10 transition"
+          className="p-2 rounded-md text-neutral-300 hover:text-white hover:bg-white/10 transition shrink-0"
           aria-label={done ? 'Replay' : playing ? 'Pause' : 'Play'}
         >
-          {done ? <RotateCcw size={14} /> : playing ? <Pause size={14} /> : <Play size={14} />}
+          {done ? <RotateCcw size={15} /> : playing ? <Pause size={15} /> : <Play size={15} />}
         </button>
 
         <input
@@ -359,14 +359,16 @@ export default function DemoPlayer() {
           value={shown}
           onChange={(e) => set(Number(e.target.value))}
           aria-label="Seek"
-          className="flex-1 h-1 accent-white cursor-pointer"
+          className="flex-1"
         />
 
-        <span className="text-[11px] text-neutral-500 tabular-nums">
+        <span className="text-[11px] text-neutral-500 tabular-nums whitespace-nowrap">
           {String(Math.floor(shown / 1000)).padStart(2, '0')}s / {Math.round(TOTAL_MS / 1000)}s
         </span>
 
-        <div className="hidden sm:flex gap-1">
+        {/* The bar lives inside the button, so the touch target can grow to a
+            thumb-friendly size without the indicator growing with it. */}
+        <div className="flex gap-0.5">
           {SCENES.map((s, i) => (
             <button
               key={s.title}
@@ -375,11 +377,15 @@ export default function DemoPlayer() {
                 setPlaying(true);
               }}
               title={s.title}
-              aria-label={s.title}
-              className={`w-6 h-1 rounded-full transition ${
-                i === active ? 'bg-white' : 'bg-white/20 hover:bg-white/40'
-              }`}
-            />
+              aria-label={`Jump to: ${s.title}`}
+              className="px-1.5 min-h-[36px] flex items-center group"
+            >
+              <span
+                className={`w-5 sm:w-6 h-1 rounded-full transition ${
+                  i === active ? 'bg-white' : 'bg-white/25 group-hover:bg-white/50'
+                }`}
+              />
+            </button>
           ))}
         </div>
       </div>

@@ -15,7 +15,7 @@ export default function Home() {
           </div>
           <a
             href="#how-it-works"
-            className="text-[11px] sm:text-xs text-neutral-600 hover:text-neutral-300 transition shrink-0 pt-1"
+            className="text-[11px] sm:text-xs text-neutral-600 hover:text-neutral-300 transition shrink-0 inline-flex items-center min-h-[36px] px-1"
           >
             How it works ↓
           </a>
@@ -28,12 +28,12 @@ export default function Home() {
 
         <DemoSteps />
 
-        <footer className="text-[11px] text-neutral-700 text-center pt-2 pb-4">
+        <footer className="text-[11px] text-neutral-700 text-center pt-2 safe-bottom">
           <a
             href="https://github.com/Virat1315/converseiq"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-neutral-500 transition"
+            className="hover:text-neutral-500 transition inline-flex items-center justify-center min-h-[40px] px-3"
           >
             github.com/Virat1315/converseiq
           </a>
